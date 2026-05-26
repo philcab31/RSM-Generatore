@@ -123,6 +123,7 @@ export default function DashboardPage() {
   const [loadingLabel, setLoadingLabel] = useState("");
   const [error, setError] = useState("");
   const [results, setResults] = useState<GeneratedItem[]>([]);
+  const [copiedId, setCopiedId] = useState("");
 
   const activeContent = useMemo(() => {
     return sources
@@ -270,8 +271,39 @@ export default function DashboardPage() {
     }
   };
 
-  const copyText = async (text?: string) => {
-    if (text) await navigator.clipboard.writeText(text);
+  const getResultText = (result: GeneratedItem) => {
+    if (result.text) return result.text;
+    if (!result.slides) return "";
+
+    return result.slides
+      .map((slide, index) => `Slide ${index + 1}\n${slide.title}\n${slide.text}`)
+      .join("\n\n");
+  };
+
+  const copyText = async (text: string | undefined, id = "copy") => {
+    if (!text?.trim()) return;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        throw new Error("Clipboard API unavailable");
+      }
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+
+    setCopiedId(id);
+    window.setTimeout(() => setCopiedId((current) => (current === id ? "" : current)), 1600);
   };
 
   const generatePost = async (
@@ -348,10 +380,9 @@ export default function DashboardPage() {
 
     const targetCount = Number(slideCount);
     const slides = (data.slides || []).slice(0, targetCount);
-    const slidesWithImages = [];
-
-    for (const [index, slide] of slides.entries()) {
-      setLoadingLabel(`Image carrousel ${index + 1}/${slides.length}`);
+    setLoadingLabel(`Images carrousel 1-${slides.length}/${slides.length}`);
+    const slidesWithImages = await Promise.all(
+      slides.map(async (slide: { title?: string; text?: string }, index: number) => {
       const imageRes = await fetch("/api/ai/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -364,12 +395,14 @@ export default function DashboardPage() {
         }),
       });
       const imageData = await imageRes.json();
-      slidesWithImages.push({
+
+      return {
         title: String(slide.title || `Slide ${index + 1}`),
         text: String(slide.text || ""),
         imageUrl: imageData.imageUrl,
-      });
-    }
+      };
+      })
+    );
 
     return {
       id: makeId(),
@@ -807,9 +840,13 @@ export default function DashboardPage() {
                           <Badge variant="secondary">{result.type}</Badge>
                           <h3 className="mt-2 font-semibold">{result.title}</h3>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => copyText(result.text)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyText(getResultText(result), result.id)}
+                        >
                           <Copy className="h-4 w-4" />
-                          Copier
+                          {copiedId === result.id ? "Copié" : "Copier"}
                         </Button>
                       </div>
 
@@ -832,7 +869,13 @@ export default function DashboardPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  onClick={() => copyText(`${slide.title}\n${slide.text}`)}
+                                  onClick={() =>
+                                    copyText(
+                                      `Slide ${index + 1}\n${slide.title}\n${slide.text}`,
+                                      `${result.id}-${index}`
+                                    )
+                                  }
+                                  title={copiedId === `${result.id}-${index}` ? "Copié" : "Copier le texte"}
                                 >
                                   <Copy className="h-4 w-4" />
                                 </Button>
@@ -848,7 +891,7 @@ export default function DashboardPage() {
                               <p className="mt-1 text-sm leading-6 text-slate-600">{slide.text}</p>
                               {slide.imageUrl && (
                                 <Button asChild variant="outline" size="sm" className="mt-3">
-                                  <a href={slide.imageUrl} download={`slide-${index + 1}.png`}>
+                                  <a href={slide.imageUrl} target="_blank" rel="noreferrer">
                                     <ExternalLink className="h-4 w-4" />
                                     Ouvrir
                                   </a>
