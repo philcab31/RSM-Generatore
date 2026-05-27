@@ -10,8 +10,8 @@ import {
   Image,
   PenTool,
   Menu,
-  X,
   Palette,
+  Facebook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ const navItems = [
   { label: "Direction Artistique", href: "/admin/brand", icon: Palette },
   { label: "Rédaction", href: "/admin/redaction", icon: PenTool },
   { label: "Blog", href: "/admin/blog", icon: FileText },
+  { label: "Facebook", href: "/admin/facebook", icon: Facebook },
   { label: "Prompts", href: "/admin/prompts", icon: MessageSquare },
   { label: "Config IA", href: "/admin/ai-config", icon: Image },
   { label: "Paramètres", href: "/admin/settings", icon: Settings },

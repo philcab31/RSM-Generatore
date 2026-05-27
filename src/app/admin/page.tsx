@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, Image, MessageSquare, Palette, Settings } from "lucide-react";
+import { Facebook, FileText, Image, MessageSquare, Palette, Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const adminModules = [
@@ -32,6 +32,12 @@ const adminModules = [
     description: "Gerer les contenus longs et brouillons editoriaux.",
     href: "/admin/blog",
     icon: Image,
+  },
+  {
+    title: "Facebook",
+    description: "Configurer et publier automatiquement sur une Page Facebook.",
+    href: "/admin/facebook",
+    icon: Facebook,
   },
 ];
 
