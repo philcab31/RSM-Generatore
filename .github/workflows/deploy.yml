@@ -52,16 +52,28 @@ jobs:
         env:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
         run: |
+          # Sanitize environment variables to remove any trailing newlines or spaces
+          HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          
           # Sync config files only if they do not exist on the server
           sshpass -e rsync -avz --ignore-existing \
-            -e "ssh -p ${{ secrets.HOSTINGER_SSH_PORT }} -o StrictHostKeyChecking=no" \
+            -e "ssh -p $PORT -o StrictHostKeyChecking=no" \
             brand-identity.json prompts-custom.json \
-            ${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:${{ secrets.HOSTINGER_SERVER_DIR }}/
+            $USER@$HOST:$DIR/
 
       - name: Deploy application files via Rsync
         env:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
         run: |
+          # Sanitize environment variables to remove any trailing newlines or spaces
+          HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          
           # Sync the entire standalone folder to Hostinger
           # We exclude brand-identity.json and prompts-custom.json to prevent overwriting server-side updates
           # We exclude .env* to avoid overwriting any custom environment files on the server
@@ -69,6 +81,6 @@ jobs:
             --exclude "brand-identity.json" \
             --exclude "prompts-custom.json" \
             --exclude ".env*" \
-            -e "ssh -p ${{ secrets.HOSTINGER_SSH_PORT }} -o StrictHostKeyChecking=no" \
+            -e "ssh -p $PORT -o StrictHostKeyChecking=no" \
             .next/standalone/ \
-            ${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:${{ secrets.HOSTINGER_SERVER_DIR }}/
+            $USER@$HOST:$DIR/
