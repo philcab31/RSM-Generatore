@@ -60,13 +60,13 @@ const AIConfigContext = createContext<AIConfigContextType | undefined>(undefined
 
 function sanitizeConfig(partial: Partial<AIConfig>): AIConfig {
   const merged = { ...defaultConfig, ...partial }
-  // Fix invalid model names that no longer exist in MODEL_OPTIONS
+  // Preserve custom model names typed by admins. Only repair empty values.
   const categories: (keyof AIConfig)[] = ['textProvider', 'imageProvider', 'videoProvider', 'researchProvider', 'socialProvider']
   for (const provKey of categories) {
     const provider = merged[provKey] as AIProvider
     const modelKey = provKey.replace('Provider', 'Model') as keyof AIConfig
     const available = MODEL_OPTIONS[provider]
-    if (available && !available.includes(merged[modelKey] as string)) {
+    if (available && !String(merged[modelKey] || '').trim()) {
       ;(merged as any)[modelKey] = available[0]
     }
   }
@@ -97,19 +97,24 @@ export function AIConfigProvider({ children }: { children: React.ReactNode }) {
 
   const setProvider = useCallback(
     (category: keyof AIConfig, value: string) => {
-      const newConfig = { ...config, [category]: value }
-      // Auto-update model when provider changes to a valid default
-      if (category.endsWith('Provider')) {
-        const provider = value as AIProvider
-        const modelKey = category.replace('Provider', 'Model') as keyof AIConfig
-        const availableModels = MODEL_OPTIONS[provider]
-        if (availableModels && !availableModels.includes(newConfig[modelKey] as string)) {
-          (newConfig as any)[modelKey] = availableModels[0]
+      setConfig((current) => {
+        const newConfig = { ...current, [category]: value }
+        // Auto-update model when provider changes and the model is empty.
+        if (category.endsWith('Provider')) {
+          const provider = value as AIProvider
+          const modelKey = category.replace('Provider', 'Model') as keyof AIConfig
+          const availableModels = MODEL_OPTIONS[provider]
+          if (availableModels && !String(newConfig[modelKey] || '').trim()) {
+            (newConfig as any)[modelKey] = availableModels[0]
+          }
         }
-      }
-      persist(newConfig)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('ai_config', JSON.stringify(newConfig))
+        }
+        return newConfig
+      })
     },
-    [config, persist]
+    []
   )
 
   const resetConfig = useCallback(() => {
