@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   CheckCircle,
   XCircle,
@@ -254,118 +254,146 @@ export default function AIConfigPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="overflow-x-auto pb-2">
-            <div className="min-w-[760px] space-y-2">
-              <div className="grid grid-cols-[160px_260px_56px_56px_56px_56px_44px_44px] items-center gap-2 px-3 text-xs font-semibold text-muted-foreground uppercase">
-                <span>Provider</span>
-                <span>Cle API</span>
-                <span className="text-center">TXT</span>
-                <span className="text-center">WEB</span>
-                <span className="text-center">IMG</span>
-                <span className="text-center">VID</span>
-                <span></span>
-                <span></span>
-              </div>
+            <table className="w-full min-w-[760px] table-fixed border-separate border-spacing-y-2">
+              <colgroup>
+                <col className="w-[160px]" />
+                <col className="w-[260px]" />
+                <col className="w-[56px]" />
+                <col className="w-[56px]" />
+                <col className="w-[56px]" />
+                <col className="w-[56px]" />
+                <col className="w-[44px]" />
+                <col className="w-[44px]" />
+              </colgroup>
+              <thead>
+                <tr className="text-xs font-semibold uppercase text-muted-foreground">
+                  <th className="px-3 py-1 text-left">Provider</th>
+                  <th className="px-3 py-1 text-left">Cle API</th>
+                  <th className="px-0 py-1 text-center">TXT</th>
+                  <th className="px-0 py-1 text-center">WEB</th>
+                  <th className="px-0 py-1 text-center">IMG</th>
+                  <th className="px-0 py-1 text-center">VID</th>
+                  <th className="px-0 py-1" aria-label="Sauvegarder"></th>
+                  <th className="px-0 py-1" aria-label="Tester"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {ALL_PROVIDERS.map((provider) => {
+                  const configured = status?.[provider] ?? false;
+                  return (
+                    <Fragment key={provider}>
+                      <tr className="rounded-lg border bg-card">
+                        <td className="rounded-l-lg border-y border-l p-3">
+                          <div className="flex w-full items-center gap-2">
+                            {configured ? (
+                              <CheckCircle className="h-4 w-4 shrink-0 text-green-500" />
+                            ) : (
+                              <XCircle className="h-4 w-4 shrink-0 text-red-500" />
+                            )}
+                            <span className="text-sm font-medium">{providerLabels[provider]}</span>
+                            <Badge variant={configured ? "default" : "secondary"} className="text-[10px]">
+                              {configured ? "OK" : "Manquant"}
+                            </Badge>
+                          </div>
+                        </td>
 
-              <div className="space-y-2">
-            {ALL_PROVIDERS.map((provider) => {
-              const configured = status?.[provider] ?? false;
-              return (
-                <div
-                  key={provider}
-                  className="grid grid-cols-[160px_260px_56px_56px_56px_56px_44px_44px] items-center gap-2 rounded-lg border p-3"
-                >
-                  <div className="flex w-full items-center gap-2">
-                    {configured ? (
-                      <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-                    )}
-                    <span className="font-medium text-sm">{providerLabels[provider]}</span>
-                    <Badge variant={configured ? "default" : "secondary"} className="text-[10px]">
-                      {configured ? "OK" : "Manquant"}
-                    </Badge>
-                  </div>
+                        <td className="border-y p-3">
+                          <Input
+                            type="password"
+                            placeholder={configured ? "Modifier la cle..." : `Cle ${providerLabels[provider]}...`}
+                            value={apiKeys[provider]}
+                            onChange={(e) =>
+                              setApiKeys((prev) => ({ ...prev, [provider]: e.target.value }))
+                            }
+                            className="w-full text-sm"
+                          />
+                        </td>
 
-                  <Input
-                    type="password"
-                    placeholder={configured ? "Modifier la cle..." : `Cle ${providerLabels[provider]}...`}
-                    value={apiKeys[provider]}
-                    onChange={(e) =>
-                      setApiKeys((prev) => ({ ...prev, [provider]: e.target.value }))
-                    }
-                    className="w-full text-sm"
-                  />
+                        <td className="border-y p-3 text-center align-middle">
+                          <div className="flex justify-center">
+                            <Checkbox
+                              checked={assignments[provider].txt}
+                              onCheckedChange={() => toggleAssignment(provider, "txt")}
+                              aria-label={`${providerLabels[provider]} pour texte`}
+                            />
+                          </div>
+                        </td>
 
-                  <div className="flex justify-center">
-                    <Checkbox
-                      checked={assignments[provider].txt}
-                      onCheckedChange={() => toggleAssignment(provider, "txt")}
-                      aria-label={`${providerLabels[provider]} pour texte`}
-                    />
-                  </div>
+                        <td className="border-y p-3 text-center align-middle">
+                          <div className="flex justify-center">
+                            <Checkbox
+                              checked={assignments[provider].web}
+                              onCheckedChange={() => toggleAssignment(provider, "web")}
+                              aria-label={`${providerLabels[provider]} pour recherche web`}
+                            />
+                          </div>
+                        </td>
 
-                  <div className="flex justify-center">
-                    <Checkbox
-                      checked={assignments[provider].web}
-                      onCheckedChange={() => toggleAssignment(provider, "web")}
-                      aria-label={`${providerLabels[provider]} pour recherche web`}
-                    />
-                  </div>
+                        <td className="border-y p-3 text-center align-middle">
+                          <div className="flex justify-center">
+                            <Checkbox
+                              checked={assignments[provider].img}
+                              onCheckedChange={() => toggleAssignment(provider, "img")}
+                              aria-label={`${providerLabels[provider]} pour images`}
+                            />
+                          </div>
+                        </td>
 
-                  <div className="flex justify-center">
-                    <Checkbox
-                      checked={assignments[provider].img}
-                      onCheckedChange={() => toggleAssignment(provider, "img")}
-                      aria-label={`${providerLabels[provider]} pour images`}
-                    />
-                  </div>
+                        <td className="border-y p-3 text-center align-middle">
+                          <div className="flex justify-center">
+                            <Checkbox
+                              checked={assignments[provider].vid}
+                              onCheckedChange={() => toggleAssignment(provider, "vid")}
+                              aria-label={`${providerLabels[provider]} pour videos`}
+                            />
+                          </div>
+                        </td>
 
-                  <div className="flex justify-center">
-                    <Checkbox
-                      checked={assignments[provider].vid}
-                      onCheckedChange={() => toggleAssignment(provider, "vid")}
-                      aria-label={`${providerLabels[provider]} pour videos`}
-                    />
-                  </div>
+                        <td className="border-y p-1 text-center align-middle">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            disabled={!apiKeys[provider].trim() || saveKeyLoading === provider}
+                            onClick={() => saveKey(provider)}
+                            className="w-10"
+                          >
+                            {saveKeyLoading === provider ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Save className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </td>
 
-                  <Button
-                    size="sm"
-                    variant="default"
-                    disabled={!apiKeys[provider].trim() || saveKeyLoading === provider}
-                    onClick={() => saveKey(provider)}
-                    className="w-10"
-                  >
-                    {saveKeyLoading === provider ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Save className="h-3 w-3" />
-                    )}
-                  </Button>
+                        <td className="rounded-r-lg border-y border-r p-1 text-center align-middle">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={testLoading === provider}
+                            onClick={() => testProvider(provider)}
+                            className="w-10"
+                          >
+                            {testLoading === provider ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <TestTube className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </td>
+                      </tr>
 
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={testLoading === provider}
-                    onClick={() => testProvider(provider)}
-                    className="w-10"
-                  >
-                    {testLoading === provider ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <TestTube className="h-3 w-3" />
-                    )}
-                  </Button>
-
-                  {saveMessages[provider] && (
-                    <p className="col-span-8 text-[10px] text-muted-foreground">
-                      {saveMessages[provider]}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-              </div>
-            </div>
+                      {saveMessages[provider] && (
+                        <tr>
+                          <td colSpan={8} className="px-3 text-[10px] text-muted-foreground">
+                            {saveMessages[provider]}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
           <div className="flex items-center gap-3 pt-2">
