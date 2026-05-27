@@ -48,6 +48,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y sshpass rsync
 
+      - name: Clean up public_html folder
+        env:
+          SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+        run: |
+          SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          PUBLIC_HTML_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          
+          echo "Cleaning up Node.js leftover files from public_html..."
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST \
+            "rm -rf $PUBLIC_HTML_DIR/.next $PUBLIC_HTML_DIR/node_modules $PUBLIC_HTML_DIR/server.js $PUBLIC_HTML_DIR/package.json $PUBLIC_HTML_DIR/public $PUBLIC_HTML_DIR/restart.bat $PUBLIC_HTML_DIR/tmp"
+
       - name: Deploy brand and prompts config (if not existing)
         env:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
@@ -56,7 +69,7 @@ jobs:
           SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
           SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
           SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
-          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
           
           # Sync config files only if they do not exist on the server
           sshpass -e rsync -avz --ignore-existing \
@@ -72,7 +85,7 @@ jobs:
           SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
           SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
           SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
-          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
           
           # Sync the entire standalone folder to Hostinger
           # We exclude brand-identity.json and prompts-custom.json to prevent overwriting server-side updates
@@ -94,21 +107,21 @@ jobs:
           SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
           SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
           SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
-          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
-          PARENT_DIR=$(dirname "$TARGET_DIR")
+          PUBLIC_HTML_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          NODEJS_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
+          PARENT_DIR=$(dirname "$PUBLIC_HTML_DIR")
           
           echo "=== REMOTE PARENT DIRECTORY LISTING ==="
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $PARENT_DIR"
-          echo "=== REMOTE TARGET DIRECTORY LISTING ==="
-          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $TARGET_DIR"
-          echo "=== REMOTE .builds DIRECTORY LISTING ==="
-          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $TARGET_DIR/.builds || true"
+          echo "=== REMOTE public_html DIRECTORY LISTING ==="
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $PUBLIC_HTML_DIR"
+          echo "=== REMOTE nodejs DIRECTORY LISTING ==="
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $NODEJS_DIR"
           echo "=== REMOTE .htaccess CONTENT ==="
-          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cat $TARGET_DIR/.htaccess || true"
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cat $PUBLIC_HTML_DIR/.htaccess || true"
           echo "=== REMOTE PROCESSES ==="
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ps aux | grep node || true"
-          echo "=== LISTENING PORTS ==="
-          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ss -tuln || netstat -tuln || true"
+
 
 
 
