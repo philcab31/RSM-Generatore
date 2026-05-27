@@ -253,26 +253,28 @@ export default function AIConfigPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="hidden md:grid md:grid-cols-[minmax(150px,1fr)_minmax(220px,1.5fr)_80px_80px_80px_80px_42px_42px] gap-2 px-3 text-xs font-semibold text-muted-foreground uppercase">
-            <span>Provider</span>
-            <span>Cle API</span>
-            <span className="text-center">TXT</span>
-            <span className="text-center">WEB</span>
-            <span className="text-center">IMG</span>
-            <span className="text-center">VID</span>
-            <span></span>
-            <span></span>
-          </div>
+          <div className="overflow-x-auto pb-2">
+            <div className="min-w-[760px] space-y-2">
+              <div className="grid grid-cols-[160px_260px_56px_56px_56px_56px_44px_44px] items-center gap-2 px-3 text-xs font-semibold text-muted-foreground uppercase">
+                <span>Provider</span>
+                <span>Cle API</span>
+                <span className="text-center">TXT</span>
+                <span className="text-center">WEB</span>
+                <span className="text-center">IMG</span>
+                <span className="text-center">VID</span>
+                <span></span>
+                <span></span>
+              </div>
 
-          <div className="space-y-2">
+              <div className="space-y-2">
             {ALL_PROVIDERS.map((provider) => {
               const configured = status?.[provider] ?? false;
               return (
                 <div
                   key={provider}
-                  className="flex flex-col md:grid md:grid-cols-[minmax(150px,1fr)_minmax(220px,1.5fr)_80px_80px_80px_80px_42px_42px] gap-2 items-center rounded-lg border p-3"
+                  className="grid grid-cols-[160px_260px_56px_56px_56px_56px_44px_44px] items-center gap-2 rounded-lg border p-3"
                 >
-                  <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="flex w-full items-center gap-2">
                     {configured ? (
                       <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
                     ) : (
@@ -331,7 +333,7 @@ export default function AIConfigPage() {
                     variant="default"
                     disabled={!apiKeys[provider].trim() || saveKeyLoading === provider}
                     onClick={() => saveKey(provider)}
-                    className="w-full md:w-[42px]"
+                    className="w-10"
                   >
                     {saveKeyLoading === provider ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -345,7 +347,7 @@ export default function AIConfigPage() {
                     variant="outline"
                     disabled={testLoading === provider}
                     onClick={() => testProvider(provider)}
-                    className="w-full md:w-[42px]"
+                    className="w-10"
                   >
                     {testLoading === provider ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -355,13 +357,15 @@ export default function AIConfigPage() {
                   </Button>
 
                   {saveMessages[provider] && (
-                    <p className="text-[10px] text-muted-foreground md:col-span-7">
+                    <p className="col-span-8 text-[10px] text-muted-foreground">
                       {saveMessages[provider]}
                     </p>
                   )}
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 pt-2">
