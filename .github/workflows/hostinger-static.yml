@@ -1,0 +1,52 @@
+name: Deploy static site for Hostinger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hostinger-static
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static export
+        run: npm run build:static
+        env:
+          NEXT_OUTPUT: export
+
+      - name: Publish static files to hostinger branch
+        run: |
+          set -euo pipefail
+          mkdir -p ../hostinger-static
+          cp -R out/. ../hostinger-static/
+          touch ../hostinger-static/.nojekyll
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan hostinger
+          git rm -rf . >/dev/null 2>&1 || true
+          cp -R ../hostinger-static/. .
+          git add -A
+          git commit -m "Deploy static site from ${GITHUB_SHA}" || exit 0
+          git push --force origin hostinger
