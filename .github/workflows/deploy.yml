@@ -121,6 +121,20 @@ jobs:
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cat $PUBLIC_HTML_DIR/.htaccess || true"
           echo "=== REMOTE PROCESSES ==="
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ps aux | grep node || true"
+          
+      - name: Run test start of server
+        env:
+          SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+        run: |
+          SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          NODEJS_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
+          
+          echo "=== RUNNING NODE SERVER.JS TEST ==="
+          # Run node server.js with a 5-second timeout to see if it starts or crashes
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cd $NODEJS_DIR && timeout 5s /opt/alt/alt-nodejs22/root/bin/node server.js || true"
+
 
 
 
