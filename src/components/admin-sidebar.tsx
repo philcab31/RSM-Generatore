@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
@@ -12,6 +12,7 @@ import {
   Menu,
   Palette,
   Facebook,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,19 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
 
 export function AdminSidebar() {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (res.ok) {
+        router.push("/login");
+        router.refresh();
+      }
+    } catch (e) {
+      console.error("Logout failed", e);
+    }
+  };
 
   return (
     <>
@@ -71,23 +85,47 @@ export function AdminSidebar() {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-64 p-4">
-            <div className="mb-6 flex items-center justify-between">
-              <span className="text-lg font-bold">SocialGen</span>
+          <SheetContent side="left" className="w-64 p-4 flex flex-col justify-between">
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center justify-between">
+                <span className="text-lg font-bold">SocialGen</span>
+              </div>
+              <NavLinks onClick={() => setOpen(false)} />
             </div>
-            <NavLinks onClick={() => setOpen(false)} />
+            <div className="pt-4 border-t">
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4" />
+                Se déconnecter
+              </Button>
+            </div>
           </SheetContent>
         </Sheet>
       </div>
 
       {/* Desktop */}
-      <aside className="hidden lg:flex w-64 flex-col border-r bg-card p-4">
-        <div className="mb-6 px-2">
-          <Link href="/" className="text-lg font-bold tracking-tight">
-            SocialGen
-          </Link>
+      <aside className="hidden lg:flex w-64 flex-col justify-between border-r bg-card p-4 min-h-screen">
+        <div className="flex flex-col gap-6">
+          <div className="px-2">
+            <Link href="/" className="text-lg font-bold tracking-tight">
+              SocialGen
+            </Link>
+          </div>
+          <NavLinks />
         </div>
-        <NavLinks />
+        <div className="pt-4 border-t">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            onClick={handleLogout}
+          >
+            <LogOut className="h-4 w-4" />
+            Se déconnecter
+          </Button>
+        </div>
       </aside>
     </>
   );

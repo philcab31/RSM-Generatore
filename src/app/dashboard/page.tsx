@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ElementType } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
@@ -24,6 +25,7 @@ import {
   Sparkles,
   Upload,
   X,
+  LogOut,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,8 +107,21 @@ function truncate(value: string, length = 140) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { config } = useAIConfig();
   const [sources, setSources] = useState<SourceItem[]>([]);
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      if (res.ok) {
+        router.push("/login");
+        router.refresh();
+      }
+    } catch (e) {
+      console.error("Logout failed", e);
+    }
+  };
   const [draftText, setDraftText] = useState("");
   const [url, setUrl] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([
@@ -545,12 +560,18 @@ export default function DashboardPage() {
               <h1 className="text-xl font-semibold tracking-tight">Generatore</h1>
             </div>
           </div>
-          <Button asChild variant="outline">
-            <Link href="/admin">
-              <Settings className="h-4 w-4" />
-              Admin
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline">
+              <Link href="/admin">
+                <Settings className="h-4 w-4" />
+                Admin
+              </Link>
+            </Button>
+            <Button variant="ghost" onClick={handleLogout} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+              <LogOut className="h-4 w-4" />
+              Se déconnecter
+            </Button>
+          </div>
         </div>
       </header>
 
