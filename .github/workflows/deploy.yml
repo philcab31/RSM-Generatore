@@ -61,11 +61,12 @@ jobs:
           SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
           PUBLIC_HTML_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
           
-          # Copy .builds config to parent directory if it exists, to fix Hostinger SetEnv require path issue
+          # Create dummy preload-timestamp.js files in both parent and public_html directories
+          # to prevent Node.js from crashing with MODULE_NOT_FOUND during Passenger boot.
           PARENT_DIR=$(dirname "$PUBLIC_HTML_DIR")
-          echo "Ensuring .builds directory exists in parent folder ($PARENT_DIR)..."
+          echo "Creating dummy preload-timestamp.js files in parent and public_html..."
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST \
-            "if [ -d $PUBLIC_HTML_DIR/.builds ]; then mkdir -p $PARENT_DIR/.builds && cp -R $PUBLIC_HTML_DIR/.builds/. $PARENT_DIR/.builds/ || true; fi"
+            "mkdir -p $PARENT_DIR/.builds/config $PUBLIC_HTML_DIR/.builds/config && echo '// dummy' > $PARENT_DIR/.builds/config/preload-timestamp.js && echo '// dummy' > $PUBLIC_HTML_DIR/.builds/config/preload-timestamp.js"
           
           echo "Cleaning up Node.js leftover files from public_html..."
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST \
