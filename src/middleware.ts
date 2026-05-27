@@ -8,31 +8,47 @@ export async function middleware(request: NextRequest) {
   // Use JWT_SECRET from environment. Fallback only for local development if not set yet.
   const secret = process.env.JWT_SECRET || 'fallback_secret_for_local_dev_only_change_in_prod'
   
-  const isAuthPage = request.nextUrl.pathname.startsWith('/login')
+  const pathname = request.nextUrl.pathname
+  const isAuthPage = pathname.startsWith('/login')
   const isProtectedRoute = 
-    request.nextUrl.pathname.startsWith('/dashboard') || 
-    request.nextUrl.pathname.startsWith('/admin') ||
-    (request.nextUrl.pathname.startsWith('/api') && !request.nextUrl.pathname.startsWith('/api/auth'))
+    pathname.startsWith('/dashboard') || 
+    pathname.startsWith('/admin') ||
+    (pathname.startsWith('/api') && !pathname.startsWith('/api/auth'))
 
   let decoded = null
   if (token) {
-    decoded = await verifyToken(token, secret)
+    try {
+      decoded = await verifyToken(token, secret)
+    } catch (err) {
+      console.error('[Middleware] Token verification error:', err)
+    }
   }
+
+  console.log(`[Middleware] Path: "${pathname}", Protected: ${isProtectedRoute}, AuthPage: ${isAuthPage}, TokenPresent: ${!!token}, ValidSession: ${!!decoded}`);
 
   // If trying to access a protected route without a valid session
   if (isProtectedRoute && !decoded) {
-    if (request.nextUrl.pathname.startsWith('/api')) {
+    if (pathname.startsWith('/api')) {
+      console.log(`[Middleware] Blocking API: "${pathname}" - returning 401`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
     // Redirect browser to login page
-    const loginUrl = new URL('/login', request.url)
+    const host = request.headers.get('host') || request.nextUrl.host
+    const protocol = request.headers.get('x-forwarded-proto') || 'https'
+    const loginUrl = new URL('/login', `${protocol}://${host}`)
+    
+    console.log(`[Middleware] Redirecting browser from "${pathname}" to "${loginUrl.toString()}"`);
     return NextResponse.redirect(loginUrl)
   }
 
   // If trying to access the login page while already authenticated
   if (isAuthPage && decoded) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    const host = request.headers.get('host') || request.nextUrl.host
+    const protocol = request.headers.get('x-forwarded-proto') || 'https'
+    const dashboardUrl = new URL('/dashboard', `${protocol}://${host}`)
+    console.log(`[Middleware] Redirecting authenticated user from "/login" to "${dashboardUrl.toString()}"`);
+    return NextResponse.redirect(dashboardUrl)
   }
 
   return NextResponse.next()
