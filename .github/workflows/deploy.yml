@@ -123,9 +123,10 @@ jobs:
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $NODEJS_DIR"
           echo "=== REMOTE .htaccess CONTENT ==="
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cat $PUBLIC_HTML_DIR/.htaccess || true"
-          echo "=== REMOTE PROCESSES ==="
-          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ps aux | grep node || true"
-          
+          # Update .htaccess on the server to use an absolute path for console.log
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST \
+            "sed -i 's|SetEnv LSNODE_CONSOLE_LOG console.log|SetEnv LSNODE_CONSOLE_LOG /home/u995779479/domains/rsmgeneratore.phyia.fr/nodejs/console.log|' $PUBLIC_HTML_DIR/.htaccess || true"
+
       - name: Run test start of server
         env:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
@@ -136,8 +137,11 @@ jobs:
           NODEJS_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
           
           echo "=== RUNNING NODE SERVER.JS TEST ==="
-          # Run node server.js with a 5-second timeout to see if it starts or crashes
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cd $NODEJS_DIR && timeout 5s /opt/alt/alt-nodejs22/root/bin/node server.js || true"
+          
+          echo "=== REMOTE console.log OUTPUT ==="
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "cat $NODEJS_DIR/console.log || echo 'No console.log yet'"
+
 
 
 
