@@ -53,26 +53,26 @@ jobs:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
         run: |
           # Sanitize environment variables to remove any trailing newlines or spaces
-          HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
-          PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
-          USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
-          DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
           
           # Sync config files only if they do not exist on the server
           sshpass -e rsync -avz --ignore-existing \
-            -e "ssh -p $PORT -o StrictHostKeyChecking=no" \
+            -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
             brand-identity.json prompts-custom.json \
-            $USER@$HOST:$DIR/
+            $SSH_USER@$SSH_HOST:$TARGET_DIR/
 
       - name: Deploy application files via Rsync
         env:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
         run: |
           # Sanitize environment variables to remove any trailing newlines or spaces
-          HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
-          PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
-          USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
-          DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
+          SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
           
           # Sync the entire standalone folder to Hostinger
           # We exclude brand-identity.json and prompts-custom.json to prevent overwriting server-side updates
@@ -81,6 +81,6 @@ jobs:
             --exclude "brand-identity.json" \
             --exclude "prompts-custom.json" \
             --exclude ".env*" \
-            -e "ssh -p $PORT -o StrictHostKeyChecking=no" \
+            -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
             .next/standalone/ \
-            $USER@$HOST:$DIR/
+            $SSH_USER@$SSH_HOST:$TARGET_DIR/
