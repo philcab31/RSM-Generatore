@@ -493,39 +493,37 @@ Sources : données simulées pour démonstration.`,
 
     const tryOpenAIGenerate = async (model: string): Promise<ImageResult | null> => {
       if (!this.openaiClient) return null
-      // Map internal names to actual OpenAI API models
-      const openAIModel = model === 'gpt-image-2' ? 'dall-e-3' : (model === 'gpt-image-1' ? 'dall-e-2' : model)
       try {
         const result = await this.openaiClient.images.generate({
-          model: openAIModel,
+          model,
           prompt,
           n: 1,
           size: '1024x1024',
         })
         const first = result.data?.[0]
-        console.log(`[image-gen] model=${openAIModel} b64_len=${first?.b64_json?.length || 0} url=${first?.url || 'none'}`)
+        console.log(`[image-gen] model=${model} b64_len=${first?.b64_json?.length || 0} url=${first?.url || 'none'}`)
         if (first?.url) {
           traceSteps.push({
             step: traceSteps.length + 1,
             name: 'API OpenAI — images.generate',
-            description: `Appel direct à OpenAI images.generate avec le modèle ${openAIModel}.`,
+            description: `Appel direct à OpenAI images.generate avec le modèle ${model}.`,
             userPrompt: prompt,
-            metadata: { model: openAIModel, api: 'images.generate', size: '1024x1024', hasB64: !!first.b64_json, hasUrl: !!first.url },
+            metadata: { model, api: 'images.generate', size: '1024x1024', hasB64: !!first.b64_json, hasUrl: !!first.url },
           })
-          return { imageUrl: first.url, modelUsed: openAIModel, trace: { steps: traceSteps } }
+          return { imageUrl: first.url, modelUsed: model, trace: { steps: traceSteps } }
         }
         if (first?.b64_json) {
           traceSteps.push({
             step: traceSteps.length + 1,
             name: 'API OpenAI — images.generate',
-            description: `Appel direct à OpenAI images.generate avec le modèle ${openAIModel}.`,
+            description: `Appel direct à OpenAI images.generate avec le modèle ${model}.`,
             userPrompt: prompt,
-            metadata: { model: openAIModel, api: 'images.generate', size: '1024x1024', b64Length: first.b64_json.length },
+            metadata: { model, api: 'images.generate', size: '1024x1024', b64Length: first.b64_json.length },
           })
-          return { imageUrl: `data:image/png;base64,${first.b64_json}`, modelUsed: openAIModel, trace: { steps: traceSteps } }
+          return { imageUrl: `data:image/png;base64,${first.b64_json}`, modelUsed: model, trace: { steps: traceSteps } }
         }
       } catch (err: any) {
-        console.error(`OpenAI image generate error (${openAIModel}):`, err?.message || err)
+        console.error(`OpenAI image generate error (${model}):`, err?.message || err)
       }
       return null
     }
