@@ -1,0 +1,74 @@
+name: Deploy Next.js Standalone to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: hostinger-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build standalone app
+        run: npm run build
+
+      - name: Prepare standalone folder
+        run: |
+          mkdir -p .next/standalone/public
+          mkdir -p .next/standalone/.next/static
+          mkdir -p .next/standalone/tmp
+          
+          # Copy public and static files
+          if [ -d "public" ]; then cp -R public/. .next/standalone/public/; fi
+          if [ -d ".next/static" ]; then cp -R .next/static/. .next/standalone/.next/static/; fi
+          
+          # Create restart file for Phusion Passenger
+          touch .next/standalone/tmp/restart.txt
+
+      - name: Install sshpass and rsync
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass rsync
+
+      - name: Deploy brand and prompts config (if not existing)
+        env:
+          SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+        run: |
+          # Sync config files only if they do not exist on the server
+          sshpass -e rsync -avz --ignore-existing \
+            -e "ssh -p ${{ secrets.HOSTINGER_SSH_PORT }} -o StrictHostKeyChecking=no" \
+            brand-identity.json prompts-custom.json \
+            ${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:${{ secrets.HOSTINGER_SERVER_DIR }}/
+
+      - name: Deploy application files via Rsync
+        env:
+          SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+        run: |
+          # Sync the entire standalone folder to Hostinger
+          # We exclude brand-identity.json and prompts-custom.json to prevent overwriting server-side updates
+          # We exclude .env* to avoid overwriting any custom environment files on the server
+          sshpass -e rsync -avz --delete \
+            --exclude "brand-identity.json" \
+            --exclude "prompts-custom.json" \
+            --exclude ".env*" \
+            -e "ssh -p ${{ secrets.HOSTINGER_SSH_PORT }} -o StrictHostKeyChecking=no" \
+            .next/standalone/ \
+            ${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:${{ secrets.HOSTINGER_SERVER_DIR }}/
