@@ -111,6 +111,22 @@ jobs:
             .next/standalone/ \
             $SSH_USER@$SSH_HOST:$TARGET_DIR/
 
+      - name: Restart Passenger Node.js application
+        env:
+          SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+        run: |
+          # Sanitize environment variables to remove any trailing newlines or spaces
+          SSH_HOST=$(echo "${{ secrets.HOSTINGER_SSH_HOST }}" | tr -d '\r\n ')
+          SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
+          SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
+          TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
+          
+          echo "Force-killing any running Node.js processes for the user..."
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "pkill -u $SSH_USER node || killall -9 node || true"
+          
+          echo "Touching restart.txt to trigger Passenger reload..."
+          sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p $TARGET_DIR/tmp && touch $TARGET_DIR/tmp/restart.txt"
+
       - name: Inspect remote files
         env:
           SSHPASS: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
