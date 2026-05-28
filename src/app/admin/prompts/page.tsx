@@ -28,6 +28,7 @@ const PROMPT_IDS = Object.keys(DEFAULT_PROMPTS);
 
 const PROMPT_LABELS: Record<string, string> = {
   PROMPT_SYSTEM_GLOBAL: "Contexte métier global",
+  PROMPT_SYNTHESE_CUMUL: "Synthèse / Cumul des sources",
   article_drafting: "Rédaction article (draft)",
   article_enrichment: "Enrichissement article",
   image_description_generator: "Description visuelle (image)",
@@ -65,6 +66,8 @@ const VARIABLES = [
   { name: "{tone}", desc: "Ton sélectionné" },
   { name: "{length_desc}", desc: "Description de la longueur" },
   { name: "{description}", desc: "Description visuelle générée" },
+  { name: "{guidance_prompt}", desc: "Directives de cumul" },
+  { name: "{style_instruction}", desc: "Style visuel actif (marque, réseau ou carrousel)" },
 ];
 
 const STORAGE_KEY = "ai_prompts_custom";

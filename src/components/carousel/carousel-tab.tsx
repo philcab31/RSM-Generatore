@@ -34,6 +34,7 @@ const CAROUSEL_PLATFORMS: { id: CarouselPlatform; label: string; maxSlides: numb
 interface CarouselData {
   title: string;
   slides: CarouselSlide[];
+  visualStyle?: string;
 }
 
 export function CarouselTab() {
@@ -66,7 +67,11 @@ export function CarouselTab() {
       });
       const data = await res.json();
       if (data.slides) {
-        setCarousel({ title: data.title || "Carrousel", slides: data.slides });
+        setCarousel({
+          title: data.title || "Carrousel",
+          slides: data.slides,
+          visualStyle: data.visualStyle,
+        });
       }
     } catch (err) {
       console.error(err);
@@ -88,6 +93,7 @@ export function CarouselTab() {
           sourceContent,
           platform,
           provider: config.imageProvider,
+          visualStyle: carousel.visualStyle,
         }),
       });
       const data = await res.json();

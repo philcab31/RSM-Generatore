@@ -95,6 +95,7 @@ export interface CarouselSlide {
 export interface CarouselScriptResult {
   title: string
   slides: CarouselSlide[]
+  visualStyle?: string
   trace?: PromptTrace
 }
 
@@ -450,14 +451,25 @@ Sources : données simulées pour démonstration.`,
     title: string,
     content: string,
     provider?: AIProvider,
-    model?: string
+    model?: string,
+    visualStyle?: string
   ): Promise<{ description: string; trace: PromptTrace }> {
     const hasKey = getServerKey(provider || 'gemini') || getServerKey('openai')
     if (!hasKey) {
       return { description: this.mockImageDescription(title), trace: { steps: [] } }
     }
 
-    const prompt = getPrompt('image_description_generator', { title, content })
+    const styleInstruction = visualStyle || "photoréaliste"
+    let prompt = getPrompt('image_description_generator', { 
+      title, 
+      content,
+      style_instruction: styleInstruction
+    })
+    
+    if (visualStyle && !prompt.includes(visualStyle)) {
+      prompt += `\n\nStyle visuel obligatoire : ${visualStyle}`
+    }
+
     const { text, systemPrompt, fullPrompt } = await this.callLLMWithTrace(prompt, provider, 0.7, model)
 
     const trace: PromptTrace = {
@@ -478,11 +490,22 @@ Sources : données simulées pour démonstration.`,
     return { description: text, trace }
   }
 
+  private getAspectRatioForPlatform(platform?: string): string {
+    if (!platform) return '1:1'
+    const p = platform.toLowerCase()
+    if (p === 'instagram' || p === 'linkedin') return '1:1'
+    if (p === 'facebook') return '1:1'
+    if (p === 'twitter' || p === 'x' || p === 'youtube') return '16:9'
+    if (p === 'shorts' || p === 'tiktok' || p === 'video') return '9:16'
+    return '1:1'
+  }
+
   public async generateImage(
     prompt: string,
     provider: AIProvider = 'openai',
     model?: string,
-    referenceImages?: string[]
+    referenceImages?: string[],
+    platform?: string
   ): Promise<ImageResult> {
     const hasKey = getServerKey(provider)
     if (!hasKey) {
@@ -491,39 +514,100 @@ Sources : données simulées pour démonstration.`,
 
     const traceSteps: PromptTrace['steps'] = []
 
-    const tryOpenAIGenerate = async (model: string): Promise<ImageResult | null> => {
+    const tryOpenAIGenerate = async (modelName: string): Promise<ImageResult | null> => {
       if (!this.openaiClient) return null
       try {
+        let realModel = modelName
+        if (modelName === 'gpt-image-2') {
+          realModel = 'dall-e-3'
+        } else if (modelName === 'gpt-image-1') {
+          realModel = 'dall-e-2'
+        }
         const result = await this.openaiClient.images.generate({
-          model,
+          model: realModel,
           prompt,
           n: 1,
           size: '1024x1024',
+          response_format: 'b64_json',
         })
         const first = result.data?.[0]
-        console.log(`[image-gen] model=${model} b64_len=${first?.b64_json?.length || 0} url=${first?.url || 'none'}`)
+        console.log(`[image-gen] model=${realModel} b64_len=${first?.b64_json?.length || 0} url=${first?.url || 'none'}`)
         if (first?.url) {
           traceSteps.push({
             step: traceSteps.length + 1,
             name: 'API OpenAI — images.generate',
-            description: `Appel direct à OpenAI images.generate avec le modèle ${model}.`,
+            description: `Appel direct à OpenAI images.generate avec le modèle ${realModel}.`,
             userPrompt: prompt,
-            metadata: { model, api: 'images.generate', size: '1024x1024', hasB64: !!first.b64_json, hasUrl: !!first.url },
+            metadata: { model: realModel, api: 'images.generate', size: '1024x1024', hasB64: !!first.b64_json, hasUrl: !!first.url },
           })
-          return { imageUrl: first.url, modelUsed: model, trace: { steps: traceSteps } }
+          return { imageUrl: first.url, modelUsed: realModel, trace: { steps: traceSteps } }
         }
         if (first?.b64_json) {
           traceSteps.push({
             step: traceSteps.length + 1,
             name: 'API OpenAI — images.generate',
-            description: `Appel direct à OpenAI images.generate avec le modèle ${model}.`,
+            description: `Appel direct à OpenAI images.generate avec le modèle ${realModel}.`,
             userPrompt: prompt,
-            metadata: { model, api: 'images.generate', size: '1024x1024', b64Length: first.b64_json.length },
+            metadata: { model: realModel, api: 'images.generate', size: '1024x1024', b64Length: first.b64_json.length },
           })
-          return { imageUrl: `data:image/png;base64,${first.b64_json}`, modelUsed: model, trace: { steps: traceSteps } }
+          return { imageUrl: `data:image/png;base64,${first.b64_json}`, modelUsed: realModel, trace: { steps: traceSteps } }
         }
       } catch (err: any) {
-        console.error(`OpenAI image generate error (${model}):`, err?.message || err)
+        console.error(`OpenAI image generate error (${modelName}):`, err?.message || err)
+      }
+      return null
+    }
+
+    const tryGeminiGenerate = async (modelName: string): Promise<ImageResult | null> => {
+      if (!this.geminiClient) return null
+      try {
+        const activeModel = modelName || 'gemini-2.5-flash-image'
+        const ratio = this.getAspectRatioForPlatform(platform)
+        
+        console.log(`[image-gen] Gemini activeModel=${activeModel} ratio=${ratio} prompt_len=${prompt.length}`)
+
+        const modelInstance = this.geminiClient.getGenerativeModel({
+          model: activeModel,
+          generationConfig: {
+            responseModalities: ['IMAGE'],
+            imageConfig: {
+              aspectRatio: ratio,
+            }
+          } as any,
+        })
+
+        const result = await modelInstance.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        })
+
+        const candidate = result.response.candidates?.[0]
+        if (candidate?.content?.parts) {
+          for (const part of candidate.content.parts) {
+            if (part.inlineData && part.inlineData.data) {
+              const mimeType = part.inlineData.mimeType || 'image/png'
+              const b64 = part.inlineData.data
+              const imageUrl = `data:${mimeType};base64,${b64}`
+
+              traceSteps.push({
+                step: traceSteps.length + 1,
+                name: 'API Gemini — generateContent (Image)',
+                description: `Appel à Gemini avec le modèle ${activeModel}, aspect_ratio=${ratio}.`,
+                userPrompt: prompt,
+                metadata: { model: activeModel, aspectRatio: ratio, mimeType },
+              })
+
+              return { imageUrl, modelUsed: activeModel, trace: { steps: traceSteps } }
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error(`Gemini image generate error (${modelName}):`, err?.message || err)
+        traceSteps.push({
+          step: traceSteps.length + 1,
+          name: `API Gemini — Erreur (${modelName})`,
+          description: `L'appel à Gemini pour générer l'image a échoué.`,
+          metadata: { error: err?.message || String(err) },
+        })
       }
       return null
     }
@@ -542,23 +626,36 @@ Sources : données simulées pour démonstration.`,
         if (editResult) return editResult
         console.log('[image] edit failed, falling back to generate without refs')
       }
-      const img2 = await tryOpenAIGenerate('gpt-image-2')
-      if (img2) return img2
-      const img1 = await tryOpenAIGenerate('gpt-image-1')
-      if (img1) return img1
+      
+      const activeModel = model || 'dall-e-3'
+      const img = await tryOpenAIGenerate(activeModel)
+      if (img) return img
+
+      // Fallback in case the customized model failed
+      if (activeModel !== 'gpt-image-2' && activeModel !== 'dall-e-3') {
+        const fallbackImg = await tryOpenAIGenerate('dall-e-3')
+        if (fallbackImg) return fallbackImg
+      }
+      const fallbackImg2 = await tryOpenAIGenerate('dall-e-2')
+      if (fallbackImg2) return fallbackImg2
+
       return this.mockGenerateImage()
     }
 
-    // Gemini fallback to OpenAI images
+    // Gemini generation with fallback to OpenAI if Gemini fails or is not available
     if (provider === 'gemini' && this.geminiClient) {
-      if (referenceImages && referenceImages.length > 0) {
-        const editResult = await tryOpenAIEdit()
-        if (editResult) return { ...editResult, modelUsed: `${editResult.modelUsed} (fallback from gemini)` }
+      const activeModel = model || 'gemini-2.5-flash-image'
+      const geminiImg = await tryGeminiGenerate(activeModel)
+      if (geminiImg) return geminiImg
+
+      if (this.openaiClient) {
+        console.log('[image] Gemini image generation failed, falling back to OpenAI')
+        const activeOpenAIModel = (model && model !== 'gemini-2.5-flash-image') ? model : 'dall-e-3'
+        const img2 = await tryOpenAIGenerate(activeOpenAIModel)
+        if (img2) return { ...img2, modelUsed: `${img2.modelUsed} (fallback from gemini)` }
+        const img1 = await tryOpenAIGenerate('dall-e-2')
+        if (img1) return { ...img1, modelUsed: `${img1.modelUsed} (fallback from gemini)` }
       }
-      const img2 = await tryOpenAIGenerate('gpt-image-2')
-      if (img2) return { ...img2, modelUsed: `${img2.modelUsed} (fallback from gemini)` }
-      const img1 = await tryOpenAIGenerate('gpt-image-1')
-      if (img1) return { ...img1, modelUsed: `${img1.modelUsed} (fallback from gemini)` }
       return this.mockGenerateImage()
     }
 
@@ -785,6 +882,42 @@ Règles :
     return parts.join('. ')
   }
 
+  public async synthesizeSources(
+    sourcesText: string,
+    guidancePrompt: string,
+    provider?: AIProvider,
+    model?: string
+  ): Promise<{ content: string; trace: PromptTrace }> {
+    const hasKey = getServerKey(provider || 'gemini') || getServerKey('openai')
+    if (!hasKey) {
+      const mockResult = `[Synthèse de démonstration]\n\nLes sources suivantes ont été combinées selon votre directive : "${guidancePrompt}".\n\nContenu des sources traitées :\n${sourcesText.slice(0, 500)}...\n\nNote : Veuillez configurer vos clés API pour générer de vraies synthèses.`
+      return { content: mockResult, trace: { steps: [] } }
+    }
+
+    const finalGuidance = guidancePrompt?.trim() || "Synthétiser l'ensemble des thèmes et informations clés de toutes les sources de manière neutre, exhaustive et structurée."
+    const basePrompt = getPrompt('PROMPT_SYNTHESE_CUMUL', { guidance_prompt: finalGuidance })
+    const fullUserPrompt = `${basePrompt}\n\nVoici les sources à synthétiser :\n\n${sourcesText}\n\nApplique les directives de cumul ci-dessus pour rédiger la synthèse finale.`
+
+    const { text, systemPrompt, fullPrompt } = await this.callLLMWithTrace(fullUserPrompt, provider, 0.7, model)
+
+    const trace: PromptTrace = {
+      steps: [
+        {
+          step: 1,
+          name: 'Synthèse du cumul des sources',
+          description: 'Appel LLM pour fusionner les sources actives selon le prompt de guidage.',
+          systemPrompt,
+          userPrompt: fullUserPrompt,
+          assembledPrompt: fullPrompt,
+          output: text,
+          metadata: { provider: provider || 'gemini', model: model || 'gemini-2.5-flash', temperature: 0.7 },
+        },
+      ],
+    }
+
+    return { content: text, trace }
+  }
+
   public async generateVideo(
     prompt: string,
     provider: AIProvider = 'magnific',
@@ -948,6 +1081,7 @@ Règles :
               title: String(s.title || ''),
               text: String(s.text || ''),
             })),
+            visualStyle: parsed.visual_style ? String(parsed.visual_style) : undefined,
             trace,
           }
         }

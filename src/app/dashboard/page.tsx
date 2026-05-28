@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ElementType } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -110,6 +110,23 @@ export default function DashboardPage() {
   const router = useRouter();
   const { config } = useAIConfig();
   const [sources, setSources] = useState<SourceItem[]>([]);
+  const [guidancePrompt, setGuidancePrompt] = useState("");
+  const [synthesisText, setSynthesisText] = useState("");
+  const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedPrompt = localStorage.getItem("guidance_prompt");
+      const storedSynthesis = localStorage.getItem("synthesis_text");
+      if (storedPrompt) setGuidancePrompt(storedPrompt);
+      if (storedSynthesis) setSynthesisText(storedSynthesis);
+    }
+  }, []);
+
+  const handleGuidanceChange = (val: string) => {
+    setGuidancePrompt(val);
+    localStorage.setItem("guidance_prompt", val);
+  };
 
   const handleLogout = async () => {
     try {
@@ -480,8 +497,325 @@ export default function DashboardPage() {
     };
   };
 
+  const getGenerationSourceContent = () => {
+    if (synthesisText.trim()) {
+      return `${synthesisText}\n\n[Paramètres de génération]\n${optionBlock}`;
+    }
+    return combinedPrompt;
+  };
+
+  const generateSynthesis = async () => {
+    if (!activeContent.trim()) {
+      setError("Sélectionnez au moins une source active pour générer la synthèse.");
+      return;
+    }
+    setError("");
+    setLoadingLabel("Génération de la synthèse");
+    try {
+      const res = await fetch("/api/ai/synthesize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcesText: activeContent,
+          guidancePrompt,
+          provider: config.textProvider,
+          model: config.textModel,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Génération de la synthèse impossible");
+      const text = data.content || data.text || "";
+      setSynthesisText(text);
+      localStorage.setItem("synthesis_text", text);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "La génération de la synthèse a échoué");
+    } finally {
+      setLoadingLabel("");
+    }
+  };
+
+  const handleResetSynthesisZone = () => {
+    setGuidancePrompt("");
+    setSynthesisText("");
+    setError("");
+    localStorage.removeItem("guidance_prompt");
+    localStorage.removeItem("synthesis_text");
+  };
+
+  const generateCarouselText = async (
+    platform: Platform,
+    sourceContent: string
+  ): Promise<GeneratedItem> => {
+    const res = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "carousel_script",
+        sourceContent: `${sourceContent}\n\nNombre de slides souhaité : ${slideCount}.`,
+        platform: platformToCarousel(platform),
+        provider: config.textProvider,
+        model: config.textModel,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "Génération carrousel impossible");
+
+    const targetCount = Number(slideCount);
+    const slides = (data.slides || []).slice(0, targetCount);
+
+    return {
+      id: makeId(),
+      type: "carousel",
+      platform,
+      title: data.title || `Carrousel ${platform}`,
+      slides: slides.map((slide: { title?: string; text?: string }, index: number) => ({
+        title: String(slide.title || `Slide ${index + 1}`),
+        text: String(slide.text || ""),
+        imageUrl: undefined,
+      })),
+    };
+  };
+
+  const generateImageText = async (
+    platform: Platform,
+    sourceContent: string
+  ): Promise<GeneratedItem> => {
+    const post = await generatePost(platform, sourceContent);
+    return {
+      id: makeId(),
+      type: "image",
+      platform,
+      title: `Image ${PLATFORM_OPTIONS.find((item) => item.id === platform)?.label}`,
+      text: post.text,
+      imageUrl: undefined,
+    };
+  };
+
+  const generateTextOnly = async () => {
+    let sourceContent = getGenerationSourceContent();
+
+    if (!sourceContent.trim() && url.trim()) {
+      const source = await ingestUrl(url.trim());
+      if (!source) return;
+      sourceContent = `[${source.title}]\n${source.content}`;
+    }
+
+    if (!sourceContent.trim()) {
+      setError("Ajoute au moins une source avant de générer.");
+      return;
+    }
+    if (selectedWorks.length === 0 || selectedPlatforms.length === 0) {
+      setError("Sélectionne au moins un format et un réseau.");
+      return;
+    }
+
+    setError("");
+    setResults([]);
+    setLoadingLabel("Génération des textes...");
+    const nextResults: GeneratedItem[] = [];
+
+    try {
+      for (const work of selectedWorks) {
+        if (work === "post") {
+          for (const platform of selectedPlatforms) {
+            setLoadingLabel(`Post ${platform}`);
+            const item = await generatePost(platform, sourceContent);
+            nextResults.push(item);
+            setResults([...nextResults]);
+          }
+        }
+        if (work === "carousel") {
+          for (const platform of selectedPlatforms) {
+            setLoadingLabel(`Carrousel text ${platform}`);
+            const item = await generateCarouselText(platform, sourceContent);
+            nextResults.push(item);
+            setResults([...nextResults]);
+          }
+        }
+        if (work === "image") {
+          for (const platform of selectedPlatforms) {
+            setLoadingLabel(`Image text ${platform}`);
+            const item = await generateImageText(platform, sourceContent);
+            nextResults.push(item);
+            setResults([...nextResults]);
+          }
+        }
+        if (work === "article") {
+          setLoadingLabel("Article blog");
+          const item = await generateArticle(sourceContent);
+          nextResults.push(item);
+          setResults([...nextResults]);
+        }
+        if (work === "video") {
+          setLoadingLabel("Prompt vidéo");
+          const item = await generateVideoPrompt(sourceContent);
+          nextResults.push(item);
+          setResults([...nextResults]);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "La génération de texte a échoué");
+    } finally {
+      setLoadingLabel("");
+    }
+  };
+
+  const generateImagesOnly = async () => {
+    if (results.length === 0) {
+      await generateAll();
+      return;
+    }
+
+    setError("");
+    const sourceContent = getGenerationSourceContent();
+
+    try {
+      const promises = results.map(async (result) => {
+        if (result.type === "image") {
+          setLoadingImages((curr) => ({ ...curr, [result.id]: true }));
+          try {
+            const res = await fetch("/api/ai/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                networkPost: result.text || sourceContent.slice(0, 800),
+                sourceContent,
+                platform: result.platform || "linkedin",
+                provider: config.imageProvider,
+                modelId: config.imageModel,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || "Génération image impossible");
+            
+            setResults((currResults) =>
+              currResults.map((r) =>
+                r.id === result.id ? { ...r, imageUrl: data.imageUrl } : r
+              )
+            );
+          } catch (err) {
+            console.error("Error generating image for post:", err);
+            setError(err instanceof Error ? err.message : "Erreur génération d'une image");
+          } finally {
+            setLoadingImages((curr) => ({ ...curr, [result.id]: false }));
+          }
+        } else if (result.type === "carousel" && result.slides) {
+          const slidePromises = result.slides.map(async (slide, index) => {
+            const slideKey = `${result.id}-${index}`;
+            setLoadingImages((curr) => ({ ...curr, [slideKey]: true }));
+            try {
+              const res = await fetch("/api/ai/image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  networkPost: `${slide.title}\n${slide.text}`,
+                  sourceContent,
+                  platform: result.platform || "linkedin",
+                  provider: config.imageProvider,
+                  modelId: config.imageModel,
+                }),
+              });
+              const data = await res.json();
+              if (!res.ok || data.error) throw new Error(data.error || "Génération image carrousel impossible");
+              
+              setResults((currResults) =>
+                currResults.map((r) => {
+                  if (r.id !== result.id || !r.slides) return r;
+                  const newSlides = [...r.slides];
+                  newSlides[index] = { ...newSlides[index], imageUrl: data.imageUrl };
+                  return { ...r, slides: newSlides };
+                })
+              );
+            } catch (err) {
+              console.error(`Error generating image for slide ${index}:`, err);
+              setError(err instanceof Error ? err.message : "Erreur génération image slide");
+            } finally {
+              setLoadingImages((curr) => ({ ...curr, [slideKey]: false }));
+            }
+          });
+          await Promise.all(slidePromises);
+        }
+      });
+
+      await Promise.all(promises);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "La génération des images a échoué");
+    }
+  };
+
+  const regenerateSingleImage = async (id: string) => {
+    const result = results.find((r) => r.id === id);
+    if (!result) return;
+    setError("");
+    setLoadingImages((curr) => ({ ...curr, [id]: true }));
+    try {
+      const sourceContent = getGenerationSourceContent();
+      const res = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          networkPost: result.text || sourceContent.slice(0, 800),
+          sourceContent,
+          platform: result.platform || "linkedin",
+          provider: config.imageProvider,
+          modelId: config.imageModel,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Régénération image impossible");
+      
+      setResults((currResults) =>
+        currResults.map((r) =>
+          r.id === id ? { ...r, imageUrl: data.imageUrl } : r
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "La régénération de l'image a échoué");
+    } finally {
+      setLoadingImages((curr) => ({ ...curr, [id]: false }));
+    }
+  };
+
+  const regenerateCarouselSlideImage = async (resultId: string, slideIndex: number) => {
+    const result = results.find((r) => r.id === resultId);
+    if (!result || !result.slides || !result.slides[slideIndex]) return;
+    const slide = result.slides[slideIndex];
+    const slideKey = `${resultId}-${slideIndex}`;
+    setError("");
+    setLoadingImages((curr) => ({ ...curr, [slideKey]: true }));
+    try {
+      const sourceContent = getGenerationSourceContent();
+      const res = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          networkPost: `${slide.title}\n${slide.text}`,
+          sourceContent,
+          platform: result.platform || "linkedin",
+          provider: config.imageProvider,
+          modelId: config.imageModel,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Régénération image slide impossible");
+      
+      setResults((currResults) =>
+        currResults.map((r) => {
+          if (r.id !== resultId || !r.slides) return r;
+          const newSlides = [...r.slides];
+          newSlides[slideIndex] = { ...newSlides[slideIndex], imageUrl: data.imageUrl };
+          return { ...r, slides: newSlides };
+        })
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "La régénération de l'image de la slide a échoué");
+    } finally {
+      setLoadingImages((curr) => ({ ...curr, [slideKey]: false }));
+    }
+  };
+
   const generateAll = async () => {
-    let sourceContent = combinedPrompt;
+    let sourceContent = getGenerationSourceContent();
 
     if (!sourceContent.trim() && url.trim()) {
       const source = await ingestUrl(url.trim());
@@ -578,23 +912,17 @@ export default function DashboardPage() {
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_380px] lg:px-8">
         <section className="space-y-6">
           <div className="rounded-lg border bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <Badge className="mb-3 bg-[#10aee2]/10 text-[#087aa0] hover:bg-[#10aee2]/10">
-                  Studio de création
-                </Badge>
-                <h2 className="text-3xl font-semibold tracking-tight">
-                  Transforme tes sources en contenus prêts à publier.
-                </h2>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                  Ajoute un texte, un PDF, une URL ou une capture d'écran, choisis les
-                  réseaux et génère les formats utiles sans manipuler les prompts ni les modèles.
-                </p>
-              </div>
-              <Button size="lg" onClick={generateAll} disabled={isBusy}>
-                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {isBusy ? loadingLabel : "Générer"}
-              </Button>
+            <div className="max-w-3xl">
+              <Badge className="mb-3 bg-[#10aee2]/10 text-[#087aa0] hover:bg-[#10aee2]/10">
+                Studio de création
+              </Badge>
+              <h2 className="text-3xl font-semibold tracking-tight">
+                Transforme tes sources en contenus prêts à publier.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                Ajoute un texte, un PDF, une URL ou une capture d'écran, choisis les
+                réseaux et génère les formats utiles sans manipuler les prompts ni les modèles.
+              </p>
             </div>
           </div>
 
@@ -716,6 +1044,71 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
+          <Card className="rounded-lg border-[#10aee2]/20 bg-white">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Layers3 className="h-5 w-5 text-[#10aee2]" />
+                Interprétation & Cumul des sources
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="guidance-prompt">Directives de guidage (optionnel)</Label>
+                  <span className="text-xs text-slate-500">
+                    {sources.filter((s) => s.selected).length} source(s) active(s)
+                  </span>
+                </div>
+                <Textarea
+                  id="guidance-prompt"
+                  value={guidancePrompt}
+                  onChange={(e) => handleGuidanceChange(e.target.value)}
+                  placeholder="Exemple : Insiste sur la sécurité des données, adopte un ton bienveillant, synthétise les points clés..."
+                  className="min-h-20"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={generateSynthesis}
+                  disabled={sources.filter((s) => s.selected).length === 0 || isBusy}
+                  className="bg-[#10aee2] hover:bg-[#0d92be] text-white"
+                >
+                  {loadingLabel === "Génération de la synthèse" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  Générer la synthèse
+                </Button>
+                
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleResetSynthesisZone}
+                  className="text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                >
+                  Réinitialiser la zone
+                </Button>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <Label htmlFor="synthesis-text">Texte de synthèse cumulé</Label>
+                <Textarea
+                  id="synthesis-text"
+                  value={synthesisText}
+                  onChange={(e) => {
+                    setSynthesisText(e.target.value);
+                    localStorage.setItem("synthesis_text", e.target.value);
+                  }}
+                  placeholder="Le résultat de la synthèse des sources apparaîtra ici. Ce texte servira de base unique pour la génération des posts."
+                  className="min-h-40 bg-slate-50 font-mono text-sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="rounded-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -830,6 +1223,35 @@ export default function DashboardPage() {
                   Emojis
                 </label>
               </div>
+
+              <div className="flex flex-wrap gap-3 border-t pt-6">
+                <Button
+                  type="button"
+                  onClick={generateTextOnly}
+                  disabled={isBusy}
+                  className="bg-[#1e2e3d] hover:bg-[#16222e] text-white flex-1"
+                >
+                  {isBusy && loadingLabel === "Génération des textes..." ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-2 h-4 w-4" />
+                  )}
+                  Générer Texte
+                </Button>
+                <Button
+                  type="button"
+                  onClick={generateImagesOnly}
+                  disabled={isBusy}
+                  className="bg-[#10aee2] hover:bg-[#0d92be] text-white flex-1"
+                >
+                  {isBusy && loadingLabel !== "Génération des textes..." && loadingLabel !== "Génération de la synthèse" && loadingLabel !== "" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                  )}
+                  Générer Images
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -858,68 +1280,138 @@ export default function DashboardPage() {
                     <div key={result.id} className="rounded-lg border bg-white p-4">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <Badge variant="secondary">{result.type}</Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">{result.type}</Badge>
+                            {result.platform && <Badge variant="outline" className="capitalize text-[10px]">{result.platform}</Badge>}
+                          </div>
                           <h3 className="mt-2 font-semibold">{result.title}</h3>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyText(getResultText(result), result.id)}
-                        >
-                          <Copy className="h-4 w-4" />
-                          {copiedId === result.id ? "Copié" : "Copier"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {result.type === "image" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => regenerateSingleImage(result.id)}
+                              disabled={loadingImages[result.id]}
+                              className="text-[#10aee2] border-[#10aee2]/20 hover:bg-[#10aee2]/5"
+                            >
+                              <ImageIcon className="h-4 w-4 mr-1" />
+                              Régénérer l'image
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyText(getResultText(result), result.id)}
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            {copiedId === result.id ? "Copié" : "Copier"}
+                          </Button>
+                        </div>
                       </div>
 
-                      {result.imageUrl && (
-                        <div className="mb-4 overflow-hidden rounded-lg border bg-slate-50">
-                          <img src={result.imageUrl} alt={result.title} className="max-h-[520px] w-full object-contain" />
+                      {result.type === "image" && (
+                        <div className="relative mb-4 overflow-hidden rounded-lg border bg-slate-50 min-h-[200px] flex items-center justify-center">
+                          {result.imageUrl ? (
+                            <img
+                              src={result.imageUrl}
+                              alt={result.title}
+                              className={`max-h-[520px] w-full object-contain transition-all duration-300 ${
+                                loadingImages[result.id] ? "blur-md scale-95" : ""
+                              }`}
+                            />
+                          ) : (
+                            <div className="text-center p-6 text-slate-400">
+                              <ImageIcon className="mx-auto h-12 w-12 stroke-1 mb-2 text-slate-300" />
+                              <p className="text-sm">Aucune image générée</p>
+                            </div>
+                          )}
+                          
+                          {loadingImages[result.id] && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm z-10 transition-all duration-300">
+                              <Loader2 className="h-8 w-8 animate-spin text-[#10aee2]" />
+                              <span className="mt-2 text-xs font-medium text-slate-600">Génération de l'image...</span>
+                            </div>
+                          )}
                         </div>
                       )}
 
                       {result.text && (
-                        <Textarea value={result.text} readOnly className="min-h-40 bg-slate-50" />
+                        <Textarea value={result.text} readOnly className="min-h-40 bg-slate-50 mb-4" />
                       )}
 
                       {result.slides && (
                         <div className="grid gap-4 md:grid-cols-2">
-                          {result.slides.map((slide, index) => (
-                            <div key={`${result.id}-${index}`} className="rounded-lg border bg-slate-50 p-3">
-                              <div className="mb-2 flex items-center justify-between">
-                                <Badge>Slide {index + 1}</Badge>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() =>
-                                    copyText(
-                                      `Slide ${index + 1}\n${slide.title}\n${slide.text}`,
-                                      `${result.id}-${index}`
-                                    )
-                                  }
-                                  title={copiedId === `${result.id}-${index}` ? "Copié" : "Copier le texte"}
-                                >
-                                  <Copy className="h-4 w-4" />
-                                </Button>
+                          {result.slides.map((slide, index) => {
+                            const slideKey = `${result.id}-${index}`;
+                            return (
+                              <div key={`${result.id}-${index}`} className="rounded-lg border bg-slate-50 p-3">
+                                <div className="mb-2 flex items-center justify-between">
+                                  <Badge>Slide {index + 1}</Badge>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => regenerateCarouselSlideImage(result.id, index)}
+                                      disabled={loadingImages[slideKey]}
+                                      title="Régénérer l'image de cette slide"
+                                      className="text-[#10aee2]"
+                                    >
+                                      <ImageIcon className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() =>
+                                        copyText(
+                                          `Slide ${index + 1}\n${slide.title}\n${slide.text}`,
+                                          `${result.id}-${index}`
+                                        )
+                                      }
+                                      title={copiedId === `${result.id}-${index}` ? "Copié" : "Copier le texte"}
+                                    >
+                                      <Copy className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                
+                                <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-md border bg-slate-100 flex items-center justify-center">
+                                  {slide.imageUrl ? (
+                                    <img
+                                      src={slide.imageUrl}
+                                      alt={slide.title}
+                                      className={`h-full w-full object-cover transition-all duration-300 ${
+                                        loadingImages[slideKey] ? "blur-md scale-95" : ""
+                                      }`}
+                                    />
+                                  ) : (
+                                    <div className="text-center p-4 text-slate-400">
+                                      <ImageIcon className="mx-auto h-8 w-8 stroke-1 mb-1 text-slate-300" />
+                                      <p className="text-xs">Aucune image</p>
+                                    </div>
+                                  )}
+                                  
+                                  {loadingImages[slideKey] && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm z-10">
+                                      <Loader2 className="h-6 w-6 animate-spin text-[#10aee2]" />
+                                      <span className="mt-1 text-[10px] font-medium text-slate-600">Génération...</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <p className="font-medium text-sm">{slide.title}</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">{slide.text}</p>
+                                {slide.imageUrl && (
+                                  <Button asChild variant="outline" size="sm" className="mt-3 w-full">
+                                    <a href={slide.imageUrl} target="_blank" rel="noreferrer">
+                                      <ExternalLink className="h-4 w-4 mr-1" />
+                                      Ouvrir
+                                    </a>
+                                  </Button>
+                                )}
                               </div>
-                              {slide.imageUrl && (
-                                <img
-                                  src={slide.imageUrl}
-                                  alt={slide.title}
-                                  className="mb-3 aspect-square w-full rounded-md border object-cover"
-                                />
-                              )}
-                              <p className="font-medium">{slide.title}</p>
-                              <p className="mt-1 text-sm leading-6 text-slate-600">{slide.text}</p>
-                              {slide.imageUrl && (
-                                <Button asChild variant="outline" size="sm" className="mt-3">
-                                  <a href={slide.imageUrl} target="_blank" rel="noreferrer">
-                                    <ExternalLink className="h-4 w-4" />
-                                    Ouvrir
-                                  </a>
-                                </Button>
-                              )}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -954,10 +1446,34 @@ export default function DashboardPage() {
                 <span className="text-slate-500">Formats</span>
                 <strong>{selectedWorks.length}</strong>
               </div>
-              <Button className="w-full" size="lg" onClick={generateAll} disabled={isBusy}>
-                {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {isBusy ? loadingLabel : "Générer maintenant"}
-              </Button>
+              <div className="flex flex-col gap-2 pt-2 border-t">
+                <Button
+                  type="button"
+                  onClick={generateTextOnly}
+                  disabled={isBusy}
+                  className="w-full bg-[#1e2e3d] hover:bg-[#16222e] text-white"
+                >
+                  {isBusy && loadingLabel === "Génération des textes..." ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-2 h-4 w-4" />
+                  )}
+                  Générer Texte
+                </Button>
+                <Button
+                  type="button"
+                  onClick={generateImagesOnly}
+                  disabled={isBusy}
+                  className="w-full bg-[#10aee2] hover:bg-[#0d92be] text-white"
+                >
+                  {isBusy && loadingLabel !== "Génération des textes..." && loadingLabel !== "Génération de la synthèse" && loadingLabel !== "" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                  )}
+                  Générer Images
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

@@ -38,7 +38,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json()
+    const rawBody = await request.json()
+
+    // Auto-prepend https:// if protocol is missing
+    let body = rawBody
+    if (body && typeof body.url === 'string') {
+      let urlStr = body.url.trim()
+      if (!/^https?:\/\//i.test(urlStr)) {
+        urlStr = `https://${urlStr}`
+      }
+      body = { ...body, url: urlStr }
+    }
+
     const parsed = scrapeSchema.safeParse(body)
 
     if (!parsed.success) {

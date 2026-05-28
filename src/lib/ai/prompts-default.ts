@@ -1,6 +1,16 @@
 export const DEFAULT_PROMPTS: Record<string, string> = {
   PROMPT_SYSTEM_GLOBAL: `Tu es un expert en communication digitale et marketing de contenu. Tu aides à créer des articles de blog et des posts réseaux sociaux engageants, structurés et adaptés à chaque plateforme.`,
 
+  PROMPT_SYNTHESE_CUMUL: `Rôle : Tu es un expert en synthèse et stratégie de contenu.
+Mission : Tu dois analyser les différentes sources textuelles fournies ci-dessous et en produire une synthèse unique et cohérente, rédigée en français.
+Instructions spécifiques de cumul (Directives de l'utilisateur) :
+{guidance_prompt}
+Consignes de formatage :
+- Dégage les thèmes principaux et les articulations logiques entre les sources.
+- Oriente la rédaction de la synthèse selon les instructions spécifiques ci-dessus.
+- Le document final doit être structuré par points clés exploitables directement pour rédiger des posts sur les réseaux sociaux.
+- Ne fais aucune référence méta au fait que tu synthétises (ex: ne dis pas "D'après les sources..."). Écris directement le contenu consolidé.`,
+
   article_drafting: `Tu es un rédacteur web expert specialise dans les articles de blog longs et structures.
 
 SUJET DE L ARTICLE :
@@ -43,7 +53,7 @@ Retourne uniquement le Markdown enrichi, sans commentaire.`,
 Titre : {title}
 Contenu : {content}
 
-La description doit être en anglais, photoréaliste et adaptée au contexte.`,
+La description doit être en anglais, respecter le style suivant : {style_instruction}, et être adaptée au contexte.`,
 
   article_image_style: `Professional editorial illustration, clean composition, soft lighting, modern aesthetic, high quality, detailed.`,
 
@@ -144,11 +154,13 @@ Contraintes :
 - Dernière slide = CTA + 5-10 hashtags pertinents
 - Ton lifestyle, visuel-first, émojis bienvenus
 - Chaque slide doit avoir un titre court (max 5 mots) et un texte concis
+- Détermine un style visuel unique ("visual_style") pour l'ensemble du carrousel (ex: "Flat 2D vector graphic design", "Minimalist business 3D illustration", "Vibrant lifestyle photography", etc.) garantissant l'unité graphique de toutes les images.
 - RETOURNE UNIQUEMENT du JSON valide, sans markdown autour
 
 FORMAT DE SORTIE STRICT (JSON) :
 {
   "title": "Titre global du carrousel",
+  "visual_style": "Style visuel global pour les illustrations (ex: Flat 2D vector graphic design)",
   "slides": [
     { "title": "...", "text": "..." },
     { "title": "...", "text": "..." }
@@ -166,11 +178,13 @@ Contraintes :
 - Dernière slide = CTA + profil auteur
 - Ton professionnel, structuré, data-driven
 - Chaque slide = un titre H2 (max 6 mots) + 2-3 phrases maximum
+- Détermine un style visuel unique ("visual_style") pour l'ensemble du carrousel (ex: "Flat 2D vector graphic design", "Minimalist business 3D illustration", "Vibrant lifestyle photography", etc.) garantissant l'unité graphique de toutes les images.
 - RETOURNE UNIQUEMENT du JSON valide, sans markdown autour
 
 FORMAT DE SORTIE STRICT (JSON) :
 {
   "title": "...",
+  "visual_style": "Style visuel global pour les illustrations (ex: Professional clean 2D vector illustration)",
   "slides": [
     { "title": "...", "text": "..." },
     { "title": "...", "text": "..." }
@@ -188,11 +202,13 @@ Contraintes :
 - Dernière slide = CTA + 2-3 hashtags
 - Ton conversationnel et engageant
 - Chaque slide = un titre court (max 5 mots) + texte
+- Détermine un style visuel unique ("visual_style") pour l'ensemble du carrousel (ex: "Flat 2D vector graphic design", "Minimalist business 3D illustration", "Vibrant lifestyle photography", etc.) garantissant l'unité graphique de toutes les images.
 - RETOURNE UNIQUEMENT du JSON valide, sans markdown autour
 
 FORMAT DE SORTIE STRICT (JSON) :
 {
   "title": "...",
+  "visual_style": "Style visuel global pour les illustrations (ex: Warm friendly vector illustration)",
   "slides": [
     { "title": "...", "text": "..." },
     { "title": "...", "text": "..." }
@@ -210,11 +226,13 @@ Contraintes :
 - Slide 1 = hook percutant
 - Dernière slide = CTA + lien cliquable suggéré
 - Ton percutant, dynamique, direct
+- Détermine un style visuel unique ("visual_style") pour l'ensemble du carrousel (ex: "Flat 2D vector graphic design", "Minimalist business 3D illustration", "Vibrant lifestyle photography", etc.) garantissant l'unité graphique de toutes les images.
 - RETOURNE UNIQUEMENT du JSON valide, sans markdown autour
 
 FORMAT DE SORTIE STRICT (JSON) :
 {
   "title": "...",
+  "visual_style": "Style visuel global pour les illustrations (ex: Bold dynamic vector design)",
   "slides": [
     { "title": "...", "text": "..." },
     { "title": "...", "text": "..." }
@@ -232,11 +250,13 @@ Contraintes :
 - Dernière slide = CTA + compte
 - Ton jeune, direct, trend-friendly
 - Images uniquement (pas de vidéo dans le carrousel)
+- Détermine un style visuel unique ("visual_style") pour l'ensemble du carrousel (ex: "Flat 2D vector graphic design", "Minimalist business 3D illustration", "Vibrant lifestyle photography", etc.) garantissant l'unité graphique de toutes les images.
 - RETOURNE UNIQUEMENT du JSON valide, sans markdown autour
 
 FORMAT DE SORTIE STRICT (JSON) :
 {
   "title": "...",
+  "visual_style": "Style visuel global pour les illustrations (ex: Energetic TikTok aesthetic flat vector)",
   "slides": [
     { "title": "...", "text": "..." },
     { "title": "...", "text": "..." }
