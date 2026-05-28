@@ -20,6 +20,24 @@ const nextConfig: NextConfig = {
       "./node_modules/require-from-string/**/*",
     ],
   },
+  // Next emits `Cache-Control: s-maxage=31536000` on prerendered HTML pages.
+  // The Hostinger CDN (hcdn) edge-caches that HTML for up to a year and keeps
+  // serving stale HTML after a deploy -> it references old chunk hashes that
+  // were removed by the `rsync --delete`, causing 404 on every /_next/static
+  // chunk. Force HTML/API documents to be non-cacheable by shared caches while
+  // leaving the immutable cache on /_next/static (matched by the negative
+  // lookahead) untouched.
+  async headers() {
+    if (isStaticExport) return [];
+    return [
+      {
+        source: "/((?!_next/).*)",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
