@@ -85,9 +85,12 @@ jobs:
             "cat $NODEJS_DIR/.env.local 2>/dev/null || echo 'No .env.local found on server!'"
           
           # === STEP 4: Clean up stale Node artifacts from public_html ===
-          echo "Cleaning up Node.js leftover files from public_html..."
+          # NOTE: We do NOT remove public_html/.next here anymore!
+          # public_html/_next/static/ is intentionally populated by the rsync step
+          # so that LiteSpeed can serve /_next/static/ files directly (bypassing Passenger).
+          echo "Cleaning up Node.js leftover files from public_html (keeping _next/static for LiteSpeed)..."
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST \
-            "rm -rf $PUBLIC_HTML_DIR/.next $PUBLIC_HTML_DIR/node_modules $PUBLIC_HTML_DIR/server.js $PUBLIC_HTML_DIR/package.json $PUBLIC_HTML_DIR/public $PUBLIC_HTML_DIR/restart.bat $PUBLIC_HTML_DIR/tmp"
+            "rm -rf $PUBLIC_HTML_DIR/node_modules $PUBLIC_HTML_DIR/server.js $PUBLIC_HTML_DIR/package.json $PUBLIC_HTML_DIR/public $PUBLIC_HTML_DIR/restart.bat $PUBLIC_HTML_DIR/tmp"
 
       - name: Deploy brand and prompts config (if not existing)
         env:
@@ -114,11 +117,14 @@ jobs:
           SSH_PORT=$(echo "${{ secrets.HOSTINGER_SSH_PORT }}" | tr -d '\r\n ')
           SSH_USER=$(echo "${{ secrets.HOSTINGER_SSH_USER }}" | tr -d '\r\n ')
           TARGET_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ' | sed 's/public_html/nodejs/')
+          PUBLIC_HTML_DIR=$(echo "${{ secrets.HOSTINGER_SERVER_DIR }}" | tr -d '\r\n ')
           
-          # Sync the entire standalone folder to Hostinger
+          # === PART 1: Deploy the full Next.js standalone server to nodejs/ ===
+          # This is the Node.js application (server.js, node_modules, .next/server)
           # We exclude brand-identity.json and prompts-custom.json to prevent overwriting server-side updates
           # We exclude .env* to avoid overwriting any custom environment files on the server
           # We exclude .htaccess to avoid deleting the web server routing configuration
+          echo "Deploying Next.js standalone server to nodejs/..."
           sshpass -e rsync -avz --delete \
             --exclude ".htaccess" \
             --exclude "brand-identity.json" \
@@ -127,6 +133,16 @@ jobs:
             -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
             .next/standalone/ \
             $SSH_USER@$SSH_HOST:$TARGET_DIR/
+          
+          # === PART 2: Deploy static assets to public_html/_next/static/ ===
+          # LiteSpeed serves static files DIRECTLY from public_html/, bypassing Node.js/Passenger.
+          # Without this, ALL /_next/static/ requests return 404 because LiteSpeed can't find them.
+          # The static files in nodejs/.next/static/ are only readable by Node.js, not LiteSpeed.
+          echo "Deploying Next.js static assets to public_html/_next/static/ for direct LiteSpeed serving..."
+          sshpass -e rsync -avz --delete \
+            -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
+            .next/static/ \
+            $SSH_USER@$SSH_HOST:$PUBLIC_HTML_DIR/_next/static/
 
       - name: Restart Passenger Node.js application
         env:
@@ -140,6 +156,7 @@ jobs:
           
           echo "Touching restart.txt to trigger Passenger reload after new files are in place..."
           sshpass -e ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p $TARGET_DIR/tmp && touch $TARGET_DIR/tmp/restart.txt"
+
 
       - name: Inspect remote files
         env:
