@@ -141,7 +141,7 @@ Source (texte/URL/PDF)
 **Providers image supportés (minimum 2 distincts, conformément au CDC) :**
 | Provider | Modèles | Usage recommandé |
 |----------|---------|-----------------|
-| OpenAI DALL-E 3 | `dall-e-3` | Style réaliste/corporate |
+| OpenAI gpt-image-1 | `gpt-image-1` | Style réaliste/corporate (supporte les images de référence via images.edit) |
 | Google Imagen | `imagen-3.0`, `imagen-3.0-fast` | Style photo propre |
 | Leonardo AI | Phoenix, Flux Schnell, Seedream | Styles artistiques variés |
 | Freepik AI | Mystic Realism v2 | Style illustratif |
@@ -464,7 +464,7 @@ RESEND_API_KEY=
 | **P1** | `AIProviderManager` (Gemini + OpenAI) + routes `/api/ai/chat` et `/api/ai/image` + mocks | Bloquante |
 | **P2** | Page prompts + `server-keys.ts` + route providers status | Haute |
 | **P3** | Dashboard — onglets Texte/URL/PDF + génération posts 5 réseaux + cards éditables | Haute |
-| **P4** | Génération images (DALL-E 3 + Leonardo) + pipeline 2 étapes | Haute |
+| **P4** | Génération images (gpt-image-1 + Gemini) + pipeline 2 étapes | Haute |
 | **P5** | Génération articles blog + enrichissement | Moyenne |
 | **P6** | Page ai-config (sélection provider par catégorie) | Moyenne |
 | **P7** | Historique générations + gestion quota localStorage | Basse |

@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import OpenAI from 'openai'
+import OpenAI, { toFile } from 'openai'
 import { getServerKey, type AIProvider } from './server-keys'
 import { getPrompt, getDefaultPrompt } from './prompts-store'
 import { buildBrandTextBlock, buildBrandVisualBlock, buildReferenceImagePrompt } from '@/lib/brand-identity'
@@ -515,11 +515,23 @@ Sources : données simulées pour démonstration.`,
     const traceSteps: PromptTrace['steps'] = []
     const errors: string[] = []
 
+    const hasRefs = !!(referenceImages && referenceImages.length > 0)
+    // Reference images are stored as data URIs (or raw base64). Split them into
+    // mime type + base64 payload so they can be fed to each provider's API.
+    const parseDataUri = (s: string): { mime: string; b64: string } => {
+      const m = /^data:([^;]+);base64,([\s\S]*)$/.exec(s)
+      if (m) return { mime: m[1], b64: m[2] }
+      return { mime: 'image/png', b64: s }
+    }
+    // When references are present, prepend the textual instruction describing
+    // how the model should use each reference image.
+    const effectivePrompt = hasRefs ? buildReferenceImagePrompt(referenceImages!, prompt) : prompt
+
     const tryOpenAIGenerate = async (modelName: string): Promise<ImageResult | null> => {
       if (!this.openaiClient) return null
       try {
         // gpt-image-1 is the current OpenAI image model. The legacy "gpt-image-2"
-        // alias maps to it; the DALL-E models are not available on all accounts.
+        // alias maps to it. Older image models are not available on all accounts.
         let realModel = modelName
         if (modelName === 'gpt-image-2' || modelName === 'gpt-image-1') {
           realModel = 'gpt-image-1'
@@ -585,8 +597,19 @@ Sources : données simulées pour démonstration.`,
           } as any,
         })
 
+        // gemini-2.5-flash-image is multimodal: pass the reference images as
+        // inline data parts before the text instruction so the model uses them.
+        const parts: any[] = []
+        if (hasRefs) {
+          for (const ref of referenceImages!.slice(0, 3)) {
+            const { mime, b64 } = parseDataUri(ref)
+            parts.push({ inlineData: { mimeType: mime, data: b64 } })
+          }
+        }
+        parts.push({ text: effectivePrompt })
+
         const result = await modelInstance.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          contents: [{ role: 'user', parts }],
         })
 
         const candidate = result.response.candidates?.[0]
@@ -600,9 +623,9 @@ Sources : données simulées pour démonstration.`,
               traceSteps.push({
                 step: traceSteps.length + 1,
                 name: 'API Gemini — generateContent (Image)',
-                description: `Appel à Gemini avec le modèle ${activeModel}, aspect_ratio=${ratio}.`,
-                userPrompt: prompt,
-                metadata: { model: activeModel, aspectRatio: ratio, mimeType },
+                description: `Appel à Gemini avec le modèle ${activeModel}, aspect_ratio=${ratio}${hasRefs ? `, ${referenceImages!.slice(0, 3).length} image(s) de référence` : ''}.`,
+                userPrompt: effectivePrompt,
+                metadata: { model: activeModel, aspectRatio: ratio, mimeType, referenceImages: hasRefs ? referenceImages!.slice(0, 3).length : 0 },
               })
 
               return { imageUrl, modelUsed: activeModel, trace: { steps: traceSteps } }
@@ -622,21 +645,62 @@ Sources : données simulées pour démonstration.`,
       return null
     }
 
-    const tryOpenAIEdit = async (): Promise<ImageResult | null> => {
-      // DALL-E does not support image-to-image style reference images, and passing a raw buffer
-      // in the images.edit API is invalid and causes the connection to hang on shared hosting.
-      // We bypass this entirely and fallback to standard generate to prevent 504 timeouts.
+    // gpt-image-1 supports image-to-image: feed the brand reference images to
+    // images.edit so the generated image follows their style/composition.
+    const tryOpenAIEdit = async (modelName: string): Promise<ImageResult | null> => {
+      if (!this.openaiClient || !hasRefs) return null
+      try {
+        let realModel = modelName
+        if (modelName === 'gpt-image-2' || modelName === 'gpt-image-1') {
+          realModel = 'gpt-image-1'
+        }
+        const ratio = this.getAspectRatioForPlatform(platform)
+        const size: '1024x1024' | '1536x1024' | '1024x1536' =
+          ratio === '16:9' ? '1536x1024' : ratio === '9:16' ? '1024x1536' : '1024x1024'
+        const files = await Promise.all(
+          referenceImages!.slice(0, 3).map(async (ref, i) => {
+            const { mime, b64 } = parseDataUri(ref)
+            const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('webp') ? 'webp' : 'png'
+            return toFile(Buffer.from(b64, 'base64'), `ref${i}.${ext}`, { type: mime })
+          })
+        )
+        const result = await this.openaiClient.images.edit({
+          model: realModel,
+          image: (files.length === 1 ? files[0] : files) as any,
+          prompt: effectivePrompt,
+          size,
+        })
+        const first = result.data?.[0]
+        console.log(`[image-gen] edit model=${realModel} size=${size} refs=${files.length} b64_len=${first?.b64_json?.length || 0}`)
+        const url = first?.b64_json
+          ? `data:image/png;base64,${first.b64_json}`
+          : first?.url
+        if (url) {
+          traceSteps.push({
+            step: traceSteps.length + 1,
+            name: 'API OpenAI — images.edit',
+            description: `Édition d'image avec ${realModel} et ${files.length} image(s) de référence.`,
+            userPrompt: effectivePrompt,
+            metadata: { model: realModel, api: 'images.edit', size, referenceImages: files.length },
+          })
+          return { imageUrl: url, modelUsed: realModel, trace: { steps: traceSteps } }
+        }
+      } catch (err: any) {
+        const msg = err?.message || String(err)
+        console.error('OpenAI images.edit error:', msg)
+        errors.push(`OpenAI edit (${modelName}) : ${msg}`)
+      }
       return null
     }
 
     // OpenAI: try edit with refs first, then generate fallback
     if (provider === 'openai' && this.openaiClient) {
-      if (referenceImages && referenceImages.length > 0) {
-        const editResult = await tryOpenAIEdit()
+      if (hasRefs) {
+        const editResult = await tryOpenAIEdit(model || 'gpt-image-1')
         if (editResult) return editResult
         console.log('[image] edit failed, falling back to generate without refs')
       }
-      
+
       const activeModel = model || 'gpt-image-1'
       const img = await tryOpenAIGenerate(activeModel)
       if (img) return img
@@ -655,6 +719,10 @@ Sources : données simulées pour démonstration.`,
 
       if (this.openaiClient) {
         console.log('[image] Gemini image generation failed, falling back to OpenAI')
+        if (hasRefs) {
+          const editFb = await tryOpenAIEdit('gpt-image-1')
+          if (editFb) return { ...editFb, modelUsed: `${editFb.modelUsed} (fallback from gemini)` }
+        }
         const img2 = await tryOpenAIGenerate('gpt-image-1')
         if (img2) return { ...img2, modelUsed: `${img2.modelUsed} (fallback from gemini)` }
       }
