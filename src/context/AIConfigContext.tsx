@@ -40,8 +40,8 @@ export const MODEL_OPTIONS: Record<AIProvider, string[]> = {
 const defaultConfig: AIConfig = {
   textProvider: 'gemini',
   textModel: 'gemini-2.5-flash',
-  imageProvider: 'openai',
-  imageModel: 'gpt-image-2',
+  imageProvider: 'gemini',
+  imageModel: 'gemini-2.5-flash-image',
   videoProvider: 'magnific',
   videoModel: 'wan-2-7-text-to-video',
   researchProvider: 'perplexity',
