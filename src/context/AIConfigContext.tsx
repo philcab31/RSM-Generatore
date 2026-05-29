@@ -19,7 +19,7 @@ export interface AIConfig {
 export const MODEL_OPTIONS: Record<AIProvider, string[]> = {
   gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-exp'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
-  // image models are handled separately; gpt-image-2 is the current OpenAI image model
+  // image models are handled separately; gpt-image-1 is the current OpenAI image model
   perplexity: ['sonar', 'sonar-pro', 'sonar-reasoning'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   fal: ['flux/dev', 'flux/schnell'],

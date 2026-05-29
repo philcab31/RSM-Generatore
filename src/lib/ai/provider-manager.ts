@@ -513,32 +513,39 @@ Sources : données simulées pour démonstration.`,
     }
 
     const traceSteps: PromptTrace['steps'] = []
+    const errors: string[] = []
 
     const tryOpenAIGenerate = async (modelName: string): Promise<ImageResult | null> => {
       if (!this.openaiClient) return null
       try {
+        // gpt-image-1 is the current OpenAI image model. The legacy "gpt-image-2"
+        // alias maps to it; the DALL-E models are not available on all accounts.
         let realModel = modelName
-        if (modelName === 'gpt-image-2') {
-          realModel = 'dall-e-3'
-        } else if (modelName === 'gpt-image-1') {
-          realModel = 'dall-e-2'
+        if (modelName === 'gpt-image-2' || modelName === 'gpt-image-1') {
+          realModel = 'gpt-image-1'
         }
+        // Map the platform aspect ratio to a gpt-image-1 supported size
+        // (1024x1024 | 1536x1024 | 1024x1536), mirroring the Gemini path.
+        const ratio = this.getAspectRatioForPlatform(platform)
+        const size: '1024x1024' | '1536x1024' | '1024x1536' =
+          ratio === '16:9' ? '1536x1024' : ratio === '9:16' ? '1024x1536' : '1024x1024'
+        // NOTE: `response_format` is rejected by the current images API
+        // ("Unknown parameter: 'response_format'"); gpt-image-1 returns b64_json by default.
         const result = await this.openaiClient.images.generate({
           model: realModel,
           prompt,
           n: 1,
-          size: '1024x1024',
-          response_format: 'b64_json',
+          size,
         })
         const first = result.data?.[0]
-        console.log(`[image-gen] model=${realModel} b64_len=${first?.b64_json?.length || 0} url=${first?.url || 'none'}`)
+        console.log(`[image-gen] model=${realModel} size=${size} b64_len=${first?.b64_json?.length || 0} url=${first?.url || 'none'}`)
         if (first?.url) {
           traceSteps.push({
             step: traceSteps.length + 1,
             name: 'API OpenAI — images.generate',
             description: `Appel direct à OpenAI images.generate avec le modèle ${realModel}.`,
             userPrompt: prompt,
-            metadata: { model: realModel, api: 'images.generate', size: '1024x1024', hasB64: !!first.b64_json, hasUrl: !!first.url },
+            metadata: { model: realModel, api: 'images.generate', size, hasB64: !!first.b64_json, hasUrl: !!first.url },
           })
           return { imageUrl: first.url, modelUsed: realModel, trace: { steps: traceSteps } }
         }
@@ -548,12 +555,14 @@ Sources : données simulées pour démonstration.`,
             name: 'API OpenAI — images.generate',
             description: `Appel direct à OpenAI images.generate avec le modèle ${realModel}.`,
             userPrompt: prompt,
-            metadata: { model: realModel, api: 'images.generate', size: '1024x1024', b64Length: first.b64_json.length },
+            metadata: { model: realModel, api: 'images.generate', size, b64Length: first.b64_json.length },
           })
           return { imageUrl: `data:image/png;base64,${first.b64_json}`, modelUsed: realModel, trace: { steps: traceSteps } }
         }
       } catch (err: any) {
-        console.error(`OpenAI image generate error (${modelName}):`, err?.message || err)
+        const msg = err?.message || String(err)
+        console.error(`OpenAI image generate error (${modelName}):`, msg)
+        errors.push(`OpenAI (${modelName}) : ${msg}`)
       }
       return null
     }
@@ -602,6 +611,7 @@ Sources : données simulées pour démonstration.`,
         }
       } catch (err: any) {
         console.error(`Gemini image generate error (${modelName}):`, err?.message || err)
+        errors.push(`Gemini (${modelName}) : ${err?.message || err}`)
         traceSteps.push({
           step: traceSteps.length + 1,
           name: `API Gemini — Erreur (${modelName})`,
@@ -627,19 +637,14 @@ Sources : données simulées pour démonstration.`,
         console.log('[image] edit failed, falling back to generate without refs')
       }
       
-      const activeModel = model || 'dall-e-3'
+      const activeModel = model || 'gpt-image-1'
       const img = await tryOpenAIGenerate(activeModel)
       if (img) return img
-
-      // Fallback in case the customized model failed
-      if (activeModel !== 'gpt-image-2' && activeModel !== 'dall-e-3') {
-        const fallbackImg = await tryOpenAIGenerate('dall-e-3')
-        if (fallbackImg) return fallbackImg
-      }
-      const fallbackImg2 = await tryOpenAIGenerate('dall-e-2')
-      if (fallbackImg2) return fallbackImg2
-
-      return this.mockGenerateImage()
+      // gpt-image-1 is the only OpenAI image model available on this account;
+      // surface the real error instead of silently returning a green mock pixel.
+      throw new Error(
+        `Génération d'image OpenAI échouée (modèle « ${activeModel} »). ${errors.join(' | ') || 'Cause inconnue.'}`
+      )
     }
 
     // Gemini generation with fallback to OpenAI if Gemini fails or is not available
@@ -650,13 +655,12 @@ Sources : données simulées pour démonstration.`,
 
       if (this.openaiClient) {
         console.log('[image] Gemini image generation failed, falling back to OpenAI')
-        const activeOpenAIModel = (model && model !== 'gemini-2.5-flash-image') ? model : 'dall-e-3'
-        const img2 = await tryOpenAIGenerate(activeOpenAIModel)
+        const img2 = await tryOpenAIGenerate('gpt-image-1')
         if (img2) return { ...img2, modelUsed: `${img2.modelUsed} (fallback from gemini)` }
-        const img1 = await tryOpenAIGenerate('dall-e-2')
-        if (img1) return { ...img1, modelUsed: `${img1.modelUsed} (fallback from gemini)` }
       }
-      return this.mockGenerateImage()
+      throw new Error(
+        `Génération d'image échouée (Gemini « ${activeModel} »). ${errors.join(' | ') || 'Cause inconnue.'}`
+      )
     }
 
     // Fal.ai / Leonardo / Freepik would be implemented here with their respective SDKs
@@ -664,10 +668,10 @@ Sources : données simulées pour démonstration.`,
     if (provider === 'magnific') {
       const result = await this.generateMagnificImage(prompt, model, referenceImages)
       if (result) return result
-      return this.mockGenerateImage()
+      throw new Error(`Génération d'image Magnific échouée (modèle « ${model || 'mystic'} »).`)
     }
 
-    return this.mockGenerateImage()
+    throw new Error(`Aucun provider d'image disponible pour « ${provider} ».`)
   }
 
   // ───────────────────────────────────────────────

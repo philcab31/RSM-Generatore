@@ -219,7 +219,7 @@ function buildPipeline(
       assembledPrompt: refPrompt || finalPrompt,
       editable: false,
       referenceImages: brand.referenceImages,
-      apiCall: refCount > 0 ? "images.edit (gpt-image-2)" : "images.generate (gpt-image-2)",
+      apiCall: refCount > 0 ? "images.edit (gpt-image-1)" : "images.generate (gpt-image-1)",
     });
   }
 
@@ -290,7 +290,7 @@ function buildPipeline(
       assembledPrompt: refPrompt || finalPrompt,
       editable: false,
       referenceImages: brand.referenceImages,
-      apiCall: refCount > 0 ? "images.edit (gpt-image-2)" : "images.generate (gpt-image-2)",
+      apiCall: refCount > 0 ? "images.edit (gpt-image-1)" : "images.generate (gpt-image-1)",
     });
   }
 

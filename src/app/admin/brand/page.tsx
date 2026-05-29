@@ -434,7 +434,7 @@ export default function BrandPage() {
               <CardTitle>Images de référence</CardTitle>
               <CardDescription>
                 Uploadez 1 à 3 images pour guider le style visuel de la génération.
-                Le modèle gpt-image-2 les utilisera comme entrées réelles.
+                Le modèle gpt-image-1 les utilisera comme entrées réelles.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

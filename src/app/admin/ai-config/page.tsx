@@ -477,7 +477,7 @@ export default function AIConfigPage() {
               <Input
                 value={models.image}
                 onChange={(e) => setModels((m) => ({ ...m, image: e.target.value }))}
-                placeholder="gpt-image-2, flux/dev..."
+                placeholder="gpt-image-1, gemini-2.5-flash-image..."
               />
               <p className="text-xs text-muted-foreground">
                 Provider : <Badge variant="outline">{config.imageProvider}</Badge>
